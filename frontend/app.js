@@ -66,6 +66,257 @@ fileInput.addEventListener('change', (event) => {
 
 // --- Core Functions ---
 
+// Utility: Format message with sales-friendly styling
+function formatSalesMessage(message) {
+    // Format key specs and highlights
+    function formatSpecs(text) {
+        return text
+            // Bold prices and key numbers
+            .replace(/(?:AED|USD|EUR)?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/g, '**$1**')
+            // Bold key specs
+            .replace(/(\d+(?:\.\d+)?\s*(?:L|kW|hp|mpg|km|miles|year|seats))/gi, '**$1**')
+            // Add emojis for stock status
+            .replace(/in stock/gi, '✅')
+            .replace(/out of stock/gi, '⚠️')
+            // Add emojis for key features
+            .replace(/hybrid/gi, '⚡')
+            .replace(/electric/gi, '🔌')
+            .replace(/premium/gi, '✨')
+            .replace(/warranty/gi, '🛡️');
+    }
+
+    // Add concise call-to-action phrases
+    const ctas = [
+        "Want details?",
+        "Check availability?",
+        "See more options?",
+        "Compare models?",
+        "Filter by feature?"
+    ];
+
+    // If message is a header or very short, return as is
+    if (message.length < 50 || message.endsWith(':')) {
+        return message;
+    }
+
+    // Format the message
+    let formatted = message;
+    
+    // Format specs and highlights
+    formatted = formatSpecs(formatted);
+
+    // Add CTA if it's the last message in a sequence
+    if (!formatted.includes('?') && !formatted.includes('Want') && !formatted.includes('Need')) {
+        formatted += `\n\n${ctas[Math.floor(Math.random() * ctas.length)]}`;
+    }
+
+    return formatted;
+}
+
+// Utility: Generate contextual follow-up questions
+function getFollowUpQuestion(context, lastMessage) {
+    const followUps = {
+        price: [
+            "Should I filter for cars under **260K**?",
+            "Want to see options in a different price range?",
+            "Would you like to compare with similar models?"
+        ],
+        type: [
+            "Are you leaning toward petrol or hybrid?",
+            "Prefer SUV or sedan?",
+            "Need more seats or better fuel economy?"
+        ],
+        features: [
+            "Any specific features you're looking for?",
+            "Color preference?",
+            "Need premium features or standard trim?"
+        ],
+        general: [
+            "Ready to explore some cars?",
+            "Want to check inventory or search documents?",
+            "Need help finding something specific?"
+        ]
+    };
+
+    // Detect context from last message
+    if (lastMessage.toLowerCase().includes('price') || /\d+[k]/.test(lastMessage)) {
+        return followUps.price[Math.floor(Math.random() * followUps.price.length)];
+    }
+    if (lastMessage.toLowerCase().includes('model') || lastMessage.toLowerCase().includes('type')) {
+        return followUps.type[Math.floor(Math.random() * followUps.type.length)];
+    }
+    if (lastMessage.toLowerCase().includes('feature') || lastMessage.toLowerCase().includes('spec')) {
+        return followUps.features[Math.floor(Math.random() * followUps.features.length)];
+    }
+    return followUps.general[Math.floor(Math.random() * followUps.general.length)];
+}
+
+// Utility: Handle casual greetings and small talk
+function handleCasualInput(message) {
+    const casualResponses = [
+        "Hey! Ready to explore some cars or upload a doc?",
+        "Just here to help. Want to check inventory or search documents?",
+        "Hi there! Looking for a specific model or need help with something?",
+        "Hello! I can help you find cars or analyze documents. What would you like to do?"
+    ];
+    
+    const casualPatterns = [
+        /^(hi|hey|hello|sup|what's up|howdy)/i,
+        /^(how are you|how's it going|how's everything)/i,
+        /^(thanks|thank you|thx)/i,
+        /^(bye|goodbye|see you)/i
+    ];
+    
+    return casualPatterns.some(pattern => pattern.test(message)) 
+        ? casualResponses[Math.floor(Math.random() * casualResponses.length)]
+        : null;
+}
+
+// Utility: Split bot response into natural message components
+function splitBotResponse(response) {
+    // Check for casual input first
+    const casualResponse = handleCasualInput(response);
+    if (casualResponse) {
+        return [casualResponse];
+    }
+
+    // Normalize line endings and clean up whitespace
+    response = response.replace(/\r\n/g, '\n').trim();
+    
+    const messages = [];
+    let currentMessage = [];
+    let inList = false;
+    let listItems = [];
+    let listCount = 0;
+    let totalItems = 0;
+    
+    // Split into lines for processing
+    const lines = response.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines
+        if (!line) {
+            if (currentMessage.length > 0) {
+                messages.push(currentMessage.join(' '));
+                currentMessage = [];
+            }
+            if (listItems.length > 0) {
+                // Only add first 3 items, then add a follow-up
+                if (totalItems <= 3) {
+                    messages.push(listItems.join('\n'));
+                } else {
+                    messages.push(listItems.slice(0, 3).join('\n'));
+                    messages.push("Want to see more options?");
+                }
+                listItems = [];
+                listCount = 0;
+            }
+            inList = false;
+            continue;
+        }
+        
+        // Check for headers
+        const isHeader = (line.length < 50 && (line.endsWith(':') || /^[A-Z\s]+$/.test(line)));
+        
+        // Check if line starts a list
+        const isListStart = /^[-*•]\s+/.test(line) || /^\d+\.\s+/.test(line);
+        
+        if (isHeader) {
+            // Flush existing content
+            if (currentMessage.length > 0) {
+                messages.push(currentMessage.join(' '));
+                currentMessage = [];
+            }
+            if (listItems.length > 0) {
+                if (totalItems <= 3) {
+                    messages.push(listItems.join('\n'));
+                } else {
+                    messages.push(listItems.slice(0, 3).join('\n'));
+                    messages.push("Want to see more options?");
+                }
+                listItems = [];
+                listCount = 0;
+            }
+            messages.push(line);
+            inList = false;
+        } else if (isListStart) {
+            if (currentMessage.length > 0) {
+                messages.push(currentMessage.join(' '));
+                currentMessage = [];
+            }
+            inList = true;
+            listItems.push(line);
+            listCount++;
+            totalItems++;
+            
+            // Limit to 3 items per message
+            if (listCount >= 3) {
+                messages.push(listItems.join('\n'));
+                listItems = [];
+                listCount = 0;
+            }
+        } else if (inList) {
+            listItems.push(line);
+            listCount++;
+            totalItems++;
+            
+            if (listCount >= 3) {
+                messages.push(listItems.join('\n'));
+                listItems = [];
+                listCount = 0;
+            }
+        } else {
+            const sentences = line.match(/[^.!?]+[.!?]+/g) || [line];
+            sentences.forEach(sentence => {
+                const trimmed = sentence.trim();
+                if (trimmed) {
+                    if (currentMessage.join(' ').length + trimmed.length > 100) {
+                        messages.push(currentMessage.join(' '));
+                        currentMessage = [];
+                    }
+                    currentMessage.push(trimmed);
+                    if (trimmed.endsWith('.') || trimmed.endsWith('!') || trimmed.endsWith('?')) {
+                        messages.push(currentMessage.join(' '));
+                        currentMessage = [];
+                    }
+                }
+            });
+        }
+    }
+    
+    // Add remaining content
+    if (currentMessage.length > 0) {
+        messages.push(currentMessage.join(' '));
+    }
+    if (listItems.length > 0) {
+        if (totalItems <= 3) {
+            messages.push(listItems.join('\n'));
+        } else {
+            messages.push(listItems.slice(0, 3).join('\n'));
+            messages.push("Want to see more options?");
+        }
+    }
+    
+    // Format messages and add follow-up questions
+    const formattedMessages = messages
+        .map(msg => msg.trim())
+        .filter(msg => msg.length > 0)
+        .map(formatSalesMessage);
+
+    // Add contextual follow-up if we have at least one message
+    if (formattedMessages.length > 0) {
+        const lastMessage = formattedMessages[formattedMessages.length - 1];
+        const followUp = getFollowUpQuestion('general', lastMessage);
+        if (followUp) {
+            formattedMessages.push(followUp);
+        }
+    }
+    
+    return formattedMessages;
+}
+
 /**
  * Handles sending a user message to the backend and displaying the response.
  */
@@ -104,43 +355,70 @@ async function sendMessage() {
         const botResponseData = await response.json();
         console.log('Response:', botResponseData);
         
-        setTimeout(() => {
-            let replyText;
-            if (typeof botResponseData === 'string') {
-                replyText = botResponseData;
-            } else if (botResponseData.reply) {
-                replyText = botResponseData.reply;
-            } else if (botResponseData.message) {
-                replyText = botResponseData.message;
-            } else if (botResponseData.response) {
-                replyText = botResponseData.response;
-            } else {
-                replyText = 'Received response from server';
-            }
+        // Remove initial typing indicator
+        typingIndicator.classList.add('hidden');
+        typingIndicator.classList.remove('flex');
+        
+        let replyText;
+        if (typeof botResponseData === 'string') {
+            replyText = botResponseData;
+        } else if (botResponseData.reply) {
+            replyText = botResponseData.reply;
+        } else if (botResponseData.message) {
+            replyText = botResponseData.message;
+        } else if (botResponseData.response) {
+            replyText = botResponseData.response;
+        } else {
+            replyText = 'Received response from server';
+        }
+
+        // Split and render each message with typing effect
+        const messages = splitBotResponse(replyText);
+        console.log('Split messages:', messages); // Debug log
+        
+        for (let i = 0; i < messages.length; i++) {
+            // Show typing indicator
+            typingIndicator.classList.remove('hidden');
+            typingIndicator.classList.add('flex');
             
-            addMessageToChatbox(replyText, 'bot', false);
+            // Calculate typing delay based on message length (300-500ms)
+            const typingDelay = Math.min(500, Math.max(300, messages[i].length * 10));
+            await new Promise(resolve => setTimeout(resolve, typingDelay));
             
-            if (botResponseData.sources && Array.isArray(botResponseData.sources)) {
-                const sourcesContainer = document.createElement('div');
-                sourcesContainer.classList.add('text-xs', 'text-slate-500', 'mt-1');
-                
-                const sourcesText = document.createElement('em');
-                sourcesText.textContent = 'Sources:';
-                sourcesContainer.appendChild(sourcesText);
-                
-                const sourcesList = document.createElement('ul');
-                botResponseData.sources.forEach(source => {
-                    const li = document.createElement('li');
-                    li.classList.add('truncate');
-                    li.textContent = source;
-                    li.title = source;
-                    sourcesList.appendChild(li);
-                });
-                
-                sourcesContainer.appendChild(sourcesList);
-                addMessageToChatbox(sourcesContainer, 'bot', true);
+            // Hide typing indicator
+            typingIndicator.classList.add('hidden');
+            typingIndicator.classList.remove('flex');
+            
+            // Add the message
+            addMessageToChatbox(messages[i], 'bot', true);
+            
+            // Add a small pause between messages
+            if (i < messages.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
-        }, 300);
+        }
+
+        // Handle sources if present
+        if (botResponseData.sources && Array.isArray(botResponseData.sources)) {
+            const sourcesContainer = document.createElement('div');
+            sourcesContainer.classList.add('text-xs', 'text-slate-500', 'mt-1');
+            
+            const sourcesText = document.createElement('em');
+            sourcesText.textContent = 'Sources:';
+            sourcesContainer.appendChild(sourcesText);
+            
+            const sourcesList = document.createElement('ul');
+            botResponseData.sources.forEach(source => {
+                const li = document.createElement('li');
+                li.classList.add('truncate');
+                li.textContent = source;
+                li.title = source;
+                sourcesList.appendChild(li);
+            });
+            
+            sourcesContainer.appendChild(sourcesList);
+            addMessageToChatbox(sourcesContainer, 'bot', true);
+        }
 
     } catch (error) {
         console.error('Error sending message or fetching response:', error);
@@ -151,21 +429,14 @@ async function sendMessage() {
     }
 }
 
-/**
- * Adds a message to the chatbox.
- * @param {string} message - The message text.
- * @param {string} sender - 'user' or 'bot'.
- * @param {boolean} isHtml - Whether the message content is HTML.
- */
+// Update addMessageToChatbox to preserve formatting for bot messages
 function addMessageToChatbox(message, sender, isHtml = false) {
     const messageElement = document.createElement('div');
     messageElement.classList.add('chat-bubble', 'max-w-lg', 'md:max-w-xl', 'p-3', 'rounded-xl', 'shadow');
-    
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const timeElement = document.createElement('span');
     timeElement.classList.add('text-xs', 'opacity-70', 'ml-2');
     timeElement.textContent = timestamp;
-
     if (sender === 'user') {
         messageElement.classList.add('bg-sky-500', 'text-white', 'self-end', 'ml-auto');
         const p = document.createElement('p');
@@ -176,14 +447,9 @@ function addMessageToChatbox(message, sender, isHtml = false) {
     } else {
         messageElement.classList.add('bg-slate-200', 'text-slate-800', 'self-start', 'mr-auto');
         if (isHtml) {
-            if (message instanceof HTMLElement) {
-                messageElement.appendChild(message);
-            } else {
-                const p = document.createElement('p');
-                p.classList.add('text-sm', 'sm:text-base', 'break-words');
-                p.textContent = message;
-                messageElement.appendChild(p);
-            }
+            // Render basic formatting: bold, bullets, numbered lists, line breaks
+            const formatted = formatBotMessage(message);
+            messageElement.appendChild(formatted);
         } else {
             const p = document.createElement('p');
             p.classList.add('text-sm', 'sm:text-base', 'break-words');
@@ -192,9 +458,69 @@ function addMessageToChatbox(message, sender, isHtml = false) {
         }
         messageElement.appendChild(timeElement);
     }
-    
     chatbox.appendChild(messageElement);
     chatbox.scrollTop = chatbox.scrollHeight;
+}
+
+// Helper: Format bot message preserving basic markdown-like formatting
+function formatBotMessage(text) {
+    // Create a container for the message
+    const container = document.createElement('div');
+    container.classList.add('text-sm', 'sm:text-base', 'break-words');
+
+    // Handle markdown-style formatting
+    let html = text
+        // Convert bold markdown to HTML
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        // Convert line breaks to <br>
+        .replace(/\n/g, '<br>');
+
+    // Check if the message contains a list
+    if (html.includes('<br>') && (html.includes('- ') || html.includes('* ') || html.includes('• ') || /^\d+\.\s/.test(html))) {
+        // Create a list container
+        const listContainer = document.createElement('div');
+        listContainer.classList.add('mt-2');
+
+        // Split into lines and process each line
+        const lines = html.split('<br>');
+        let currentList = null;
+
+        lines.forEach(line => {
+            if (line.trim().startsWith('- ') || line.trim().startsWith('* ') || line.trim().startsWith('• ') || /^\d+\.\s/.test(line.trim())) {
+                // Start a new list if needed
+                if (!currentList) {
+                    currentList = document.createElement('ul');
+                    currentList.classList.add('list-disc', 'ml-4', 'mt-1');
+                    listContainer.appendChild(currentList);
+                }
+                // Add list item
+                const li = document.createElement('li');
+                li.innerHTML = line.replace(/^[-*•]\s+|\d+\.\s+/, '');
+                currentList.appendChild(li);
+            } else {
+                // Regular text
+                if (currentList) {
+                    container.appendChild(listContainer);
+                    currentList = null;
+                }
+                const p = document.createElement('p');
+                p.innerHTML = line;
+                container.appendChild(p);
+            }
+        });
+
+        // Add any remaining list
+        if (currentList) {
+            container.appendChild(listContainer);
+        }
+    } else {
+        // Regular text with line breaks
+        const p = document.createElement('p');
+        p.innerHTML = html;
+        container.appendChild(p);
+    }
+
+    return container;
 }
 
 /**
