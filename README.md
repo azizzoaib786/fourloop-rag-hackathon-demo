@@ -1,6 +1,6 @@
 # 🚗 Fourloop RAG Hackathon Demo
 
-This repository demonstrates a Retrieval-Augmented Generation (RAG) based chatbot system built for Gargash Group’s automobile sales use case. It combines OpenSearch (as vector DB), Amazon Bedrock (for embeddings and Claude), and AWS Lambda (for backend logic), with a React frontend.
+This repository demonstrates a Retrieval-Augmented Generation (RAG) based chatbot system built for Gargash Group’s automobile sales use case. It combines OpenSearch (as vector DB), Amazon Bedrock (for embeddings and Claude), and AWS Lambda (for backend logic), with a JavaScript frontend.
 
 ---
 
@@ -11,7 +11,7 @@ This repository demonstrates a Retrieval-Augmented Generation (RAG) based chatbo
 * Query vehicle inventory using natural language
 * Generate responses using Claude 3.5 Sonnet via Bedrock
 * Backend hosted on Lambda, optional Streamlit local backend
-* Frontend built in React (separate repo)
+* Frontend built in JavaScript (separate folder frontend/)
 
 ---
 
@@ -19,6 +19,9 @@ This repository demonstrates a Retrieval-Augmented Generation (RAG) based chatbo
 
 ```
 fourloop-rag-hackathon-demo/
+├── frontend
+│   └── server.js # Frontend
+│   └── app.js
 ├── lambda-data-embeddings/
 │   └── lambda_function.py   # Lambda to index/update data from S3 to OpenSearch
 ├── fourloop-lambda-rag-backend/
@@ -86,7 +89,7 @@ curl -X POST http://localhost:8000/query \
 * **AWS Lambda** (serverless backend)
 * **S3** (inventory source)
 * **FastAPIt** (local backend option)
-* **React** (frontend)
+* **JavaScript** (frontend)
 
 ---
 
