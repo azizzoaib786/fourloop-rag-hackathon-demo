@@ -172,6 +172,69 @@ function handleCasualInput(message) {
         : null;
 }
 
+// Utility: Summarize car/options into single lines (tighter, no bullets, no extra sentences)
+function summarizeOptions(lines) {
+    const summaries = [];
+    let current = '';
+    let model = '', color = '', location = '', price = '', engine = '', status = '';
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        if (!line) continue;
+        // Detect start of a new option (numbered or model name)
+        if (/^\d+\./.test(line) || /GLC|EQS|Maybach|Model|G63|AMG|\b[A-Z]{2,}\b/.test(line)) {
+            if (model) {
+                // Compose summary
+                let summary = `**${model}**`;
+                if (color) summary += ` (${color}` + (location ? `, ${location})` : ')');
+                else if (location) summary += ` (${location})`;
+                if (price) summary += ` – ${price}`;
+                if (engine) summary += ` – ${engine}`;
+                if (status) summary += ` – ${status}`;
+                summaries.push(summary);
+            }
+            // Reset for new option
+            model = line.replace(/^\d+\.\s*/, '').replace(/\(.*\)/, '').trim();
+            color = location = price = engine = status = '';
+            // Try to extract color/location from model line
+            const colorMatch = line.match(/\(([^)]+)\)/);
+            if (colorMatch) {
+                const parts = colorMatch[1].split(',').map(s => s.trim());
+                color = parts[0] || '';
+                location = parts[1] || '';
+            }
+            if (!location && /abu dhabi|deira|dubai/i.test(line)) {
+                location = (line.match(/abu dhabi|deira|dubai/i) || [''])[0];
+            }
+        } else {
+            // Try to extract price, engine, status
+            if (/price[:\s]/i.test(line)) {
+                price = line.replace(/price[:\s]*/i, '').replace(/\*\*/g, '').replace(/\./g, '').trim();
+            } else if (/\d+[- ]*seater?/i.test(line)) {
+                engine = line.replace(/\*\*/g, '').trim();
+            } else if (/v\d|engine|hybrid|diesel|petrol|fuel|electric/i.test(line)) {
+                engine = line.replace(/\*\*/g, '').replace('This model has an', '').replace('engine,', '').replace('engine', '').replace('which aligns with your interest in an', '').replace('vehicle.', '').trim();
+            } else if (/in stock|pre-order|available|stock|abu dhabi|deira/i.test(line)) {
+                if (/in stock/i.test(line)) status = 'In Stock';
+                else if (/pre-order/i.test(line)) status = 'Pre-Order';
+                else if (/available/i.test(line)) status = 'Available';
+                if (!location && /abu dhabi|deira|dubai/i.test(line)) {
+                    location = (line.match(/abu dhabi|deira|dubai/i) || [''])[0];
+                }
+            }
+        }
+    }
+    if (model) {
+        let summary = `**${model}**`;
+        if (color) summary += ` (${color}` + (location ? `, ${location})` : ')');
+        else if (location) summary += ` (${location})`;
+        if (price) summary += ` – ${price}`;
+        if (engine) summary += ` – ${engine}`;
+        if (status) summary += ` – ${status}`;
+        summaries.push(summary);
+    }
+    return summaries;
+}
+
 // Utility: Split bot response into natural message components
 function splitBotResponse(response) {
     // Check for casual input first
@@ -180,141 +243,46 @@ function splitBotResponse(response) {
         return [casualResponse];
     }
 
-    // Normalize line endings and clean up whitespace
+    // Normalize and split into lines
     response = response.replace(/\r\n/g, '\n').trim();
-    
-    const messages = [];
-    let currentMessage = [];
-    let inList = false;
-    let listItems = [];
-    let listCount = 0;
-    let totalItems = 0;
-    
-    // Split into lines for processing
     const lines = response.split('\n');
-    
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        
-        // Skip empty lines
-        if (!line) {
-            if (currentMessage.length > 0) {
-                messages.push(currentMessage.join(' '));
-                currentMessage = [];
-            }
-            if (listItems.length > 0) {
-                // Only add first 3 items, then add a follow-up
-                if (totalItems <= 3) {
-                    messages.push(listItems.join('\n'));
-                } else {
-                    messages.push(listItems.slice(0, 3).join('\n'));
-                    messages.push("Want to see more options?");
-                }
-                listItems = [];
-                listCount = 0;
-            }
-            inList = false;
-            continue;
-        }
-        
-        // Check for headers
-        const isHeader = (line.length < 50 && (line.endsWith(':') || /^[A-Z\s]+$/.test(line)));
-        
-        // Check if line starts a list
-        const isListStart = /^[-*•]\s+/.test(line) || /^\d+\.\s+/.test(line);
-        
-        if (isHeader) {
-            // Flush existing content
-            if (currentMessage.length > 0) {
-                messages.push(currentMessage.join(' '));
-                currentMessage = [];
-            }
-            if (listItems.length > 0) {
-                if (totalItems <= 3) {
-                    messages.push(listItems.join('\n'));
-                } else {
-                    messages.push(listItems.slice(0, 3).join('\n'));
-                    messages.push("Want to see more options?");
-                }
-                listItems = [];
-                listCount = 0;
-            }
-            messages.push(line);
-            inList = false;
-        } else if (isListStart) {
-            if (currentMessage.length > 0) {
-                messages.push(currentMessage.join(' '));
-                currentMessage = [];
-            }
-            inList = true;
-            listItems.push(line);
-            listCount++;
-            totalItems++;
-            
-            // Limit to 3 items per message
-            if (listCount >= 3) {
-                messages.push(listItems.join('\n'));
-                listItems = [];
-                listCount = 0;
-            }
-        } else if (inList) {
-            listItems.push(line);
-            listCount++;
-            totalItems++;
-            
-            if (listCount >= 3) {
-                messages.push(listItems.join('\n'));
-                listItems = [];
-                listCount = 0;
-            }
-        } else {
-            const sentences = line.match(/[^.!?]+[.!?]+/g) || [line];
-            sentences.forEach(sentence => {
-                const trimmed = sentence.trim();
-                if (trimmed) {
-                    if (currentMessage.join(' ').length + trimmed.length > 100) {
-                        messages.push(currentMessage.join(' '));
-                        currentMessage = [];
-                    }
-                    currentMessage.push(trimmed);
-                    if (trimmed.endsWith('.') || trimmed.endsWith('!') || trimmed.endsWith('?')) {
-                        messages.push(currentMessage.join(' '));
-                        currentMessage = [];
-                    }
-                }
-            });
-        }
-    }
-    
-    // Add remaining content
-    if (currentMessage.length > 0) {
-        messages.push(currentMessage.join(' '));
-    }
-    if (listItems.length > 0) {
-        if (totalItems <= 3) {
-            messages.push(listItems.join('\n'));
-        } else {
-            messages.push(listItems.slice(0, 3).join('\n'));
-            messages.push("Want to see more options?");
-        }
-    }
-    
-    // Format messages and add follow-up questions
-    const formattedMessages = messages
-        .map(msg => msg.trim())
-        .filter(msg => msg.length > 0)
-        .map(formatSalesMessage);
 
-    // Add contextual follow-up if we have at least one message
-    if (formattedMessages.length > 0) {
-        const lastMessage = formattedMessages[formattedMessages.length - 1];
-        const followUp = getFollowUpQuestion('general', lastMessage);
-        if (followUp) {
-            formattedMessages.push(followUp);
-        }
+    // If the response is an apology or single statement, just return it
+    if (lines.length === 1 || (lines.length <= 2 && !lines[0].match(/\d+\./))) {
+        return [formatSalesMessage(response)];
     }
-    
-    return formattedMessages;
+
+    // Summarize options
+    const summaries = summarizeOptions(lines);
+    // Only show up to 3 options at once
+    const shown = summaries.slice(0, 3);
+    let optionsMsg = shown.join('\n');
+    if (summaries.length > 3) {
+        optionsMsg += '\nWant to see more options?';
+    }
+
+    // Find a relevant follow-up
+    let followUp = '';
+    if (summaries.length > 0) {
+        followUp = getFollowUpQuestion('general', optionsMsg);
+    }
+
+    // If there was an apology or context at the top, prepend it
+    let preamble = '';
+    if (lines[0].toLowerCase().includes("don't currently have") || lines[0].toLowerCase().includes('apolog')) {
+        preamble = lines[0];
+    }
+
+    // Compose the final message array (max 2–3 bubbles, no repeats)
+    const result = [];
+    let mainBubble = '';
+    if (preamble) mainBubble += formatSalesMessage(preamble) + '\n';
+    if (optionsMsg) mainBubble += formatSalesMessage(optionsMsg);
+    mainBubble = mainBubble.trim();
+    if (mainBubble) result.push(mainBubble);
+    if (followUp) result.push(followUp);
+    // Remove duplicate messages and limit to 2–3 bubbles
+    return result.filter((msg, idx, arr) => arr.indexOf(msg) === idx).slice(0, 3);
 }
 
 /**
