@@ -108,7 +108,7 @@ def query_claude(prompt):
     for attempt in range(max_retries):
         try:
             response = client.invoke_model(
-                modelId="anthropic.claude-3-5-sonnet-20240620-v1:0",
+                modelId="arn:aws:bedrock:us-east-1:863364345844:provisioned-model/ic9cem6y7m7r",
                 body=json.dumps(body),
                 contentType="application/json",
                 accept="application/json"
